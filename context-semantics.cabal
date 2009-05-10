@@ -1,0 +1,19 @@
+Name:               context-semantics
+Version:            0.1
+Cabal-Version:      >= 1.2
+Category:           Language
+Synopsis:           Lambda evaluator using context semantics
+License:            BSD3
+License-File:       LICENSE
+Author:             Max Bolingbroke
+Maintainer:         batterseapower@hotmail.com
+Homepage:           http://github.com/batterseapower/context-semantics
+Build-Type:         Simple
+
+Executable context-semantics
+        Main-Is:                Language/ContextSemantics/Main.hs
+        
+        Build-Depends:          base >= 3, utf8-string >= 0.3.4
+        
+        Extensions:             PatternGuards
+        Ghc-Options:            -Wall
