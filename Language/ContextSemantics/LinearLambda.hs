@@ -48,13 +48,13 @@ fv = Output
 -- Translation from traditional linear lambda calculus
 --
 
-exprSemantics :: Expr -> Port
-exprSemantics = fst . exprSemantics' (fv "Input") []
+exprSemantics :: Expr -> (Port, [(String, Port)])
+exprSemantics e = exprSemantics' (fv "Input") [(v, fv v) | v <- freeVars e] e
 
 exprSemantics' :: Port -> [(String, Port)] -> Expr -> (Port, [(String, Port)])
 exprSemantics' out_port env (V v)
   | Just p <- lookup v env = (p,    [(v, out_port)])
-  | otherwise              = (fv v, [(v, out_port)])
+  | otherwise              = error $ "No binding for " ++ v
 exprSemantics' out_port env (e1 :@ e2) = (c, usg1 ++ usg2)
   where (e1_port, usg1) = exprSemantics' r env e1
         (e2_port, usg2) = exprSemantics' a env e2
@@ -98,7 +98,7 @@ normal = r1
     (r4, c4, _a4) = app p2 r3 z
 
 normal_expr :: Port
-normal_expr = exprSemantics $ Lam "x" (Lam "y" (V "y" :@ V "z" :@ V "x"))
+normal_expr = fst $ exprSemantics $ Lam "x" (Lam "y" (V "y" :@ V "z" :@ V "x"))
 
 normal_expr_th :: Port
-normal_expr_th = exprSemantics $ $(expr [| \x -> \y -> y $(fvTH "z") x |])
+normal_expr_th = fst $ exprSemantics $ $(expr [| \x -> \y -> y $(fvTH "z") x |])

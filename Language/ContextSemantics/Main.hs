@@ -8,5 +8,5 @@ main :: IO ()
 main = do
     putStrLn "Linear Lambda Calculus:"
     L.examples
-    putStrLn "Call By Name Labda Calculus:"
+    putStrLn "Call By Name Lambda Calculus:"
     CBN.examples

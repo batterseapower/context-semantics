@@ -1,5 +1,7 @@
 module Language.ContextSemantics.Expressions where
 
+import Data.List
+
 import qualified Language.Haskell.TH as TH
 
 
@@ -8,6 +10,11 @@ data Expr = V String
           | Lam String Expr
 
 infixl 8 :@
+
+freeVars :: Expr -> [String]
+freeVars (V v) = [v]
+freeVars (e1 :@ e2) = freeVars e1 ++ freeVars e2
+freeVars (Lam v e) = delete v $ freeVars e
 
 expr :: TH.ExpQ -> TH.ExpQ
 expr qe = do
