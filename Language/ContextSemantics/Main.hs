@@ -1,12 +1,12 @@
 module Main (main) where
 
-import Language.ContextSemantics.LinearLambda
-
-import System.IO.UTF8
-import Prelude hiding (print)
+import qualified Language.ContextSemantics.CallByNeedLambda as CBN
+import qualified Language.ContextSemantics.LinearLambda as L
 
 
 main :: IO ()
 main = do
-    print (identity [])
-    print (normal [White, White])
+    putStrLn "Linear Lambda Calculus:"
+    L.examples
+    putStrLn "Call By Name Labda Calculus:"
+    CBN.examples

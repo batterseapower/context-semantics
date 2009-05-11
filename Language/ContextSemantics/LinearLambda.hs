@@ -1,7 +1,13 @@
 module Language.ContextSemantics.LinearLambda where
 
+import Language.ContextSemantics.Expressions
 import Language.ContextSemantics.Output
 
+import Data.Maybe
+
+--
+-- Context semantics
+--
 
 data Token = White | Black
 
@@ -38,6 +44,37 @@ lam princp_out body_out param_out = (princp_in, body_in, param_in)
 fv :: String -> Port
 fv = Output
 
+--
+-- Translation from traditional linear lambda calculus
+--
+
+exprSemantics :: Expr -> Port
+exprSemantics = fst . exprSemantics' (fv "Input") []
+
+exprSemantics' :: Port -> [(String, Port)] -> Expr -> (Port, [(String, Port)])
+exprSemantics' out_port env (V v)
+  | Just p <- lookup v env = (p,    [(v, out_port)])
+  | otherwise              = (fv v, [(v, out_port)])
+exprSemantics' out_port env (e1 :@ e2) = (c, usg1 ++ usg2)
+  where (e1_port, usg1) = exprSemantics' r env e1
+        (e2_port, usg2) = exprSemantics' a env e2
+        (r, c, a) = app e1_port out_port e2_port
+exprSemantics' out_port env (Lam v e) = (r, filter ((/= v) . fst) usg)
+  where (e_port, usg) = exprSemantics' b ((v, p) : env) e
+        v_port = (error $ "Missing usage of " ++ v) `fromMaybe` lookup v usg
+        (r, b, p) = lam out_port e_port v_port
+
+--
+-- Examples
+--
+
+examples :: IO ()
+examples = do
+    printUTF8 $ identity []
+    printUTF8 $ normal [White, White]
+    printUTF8 $ normal_expr [White, White]
+    printUTF8 $ normal_expr_th [White, White]
+
 -- (\x.x) @ y
 --  Port wired to the input of the application
 identity :: Port
@@ -59,3 +96,9 @@ normal = r1
     (r2, b2, p2) = lam b1 c3 r4
     (r3, c3, a3) = app c4 b2 p1
     (r4, c4, _a4) = app p2 r3 z
+
+normal_expr :: Port
+normal_expr = exprSemantics $ Lam "x" (Lam "y" (V "y" :@ V "z" :@ V "x"))
+
+normal_expr_th :: Port
+normal_expr_th = exprSemantics $ $(expr [| \x -> \y -> y $(fvTH "z") x |])
