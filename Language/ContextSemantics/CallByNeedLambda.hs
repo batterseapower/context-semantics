@@ -113,9 +113,20 @@ exprSemantics' out_port env (V v) = (forced_port, [(v, boxed_port)])
   where (forced_port, boxed_port) = croissant v out_port (lookupInEnv env v)
 exprSemantics' out_port env (e1 :@ e2) = (c, usg)
   where (e1_port, usg1) = exprSemantics' r env1 e1
+        -- If you send a signal out of e2 then it must leave the box - hence the modifications
+        -- to the environment and the port we supply
         (e2_port, usg2) = exprSemantics' (leaveBox a) (map (second leaveBox) env2') e2
+        
+        -- Both expressions in the application might refer to the same free variable, and we need
+        -- to insert share nodes if that happens
         (env1, env2, usg) = combineUsages env usg1 usg2'
+        
+        -- If you send a signal to the usages originating from e2 then you implicitly enter the box.
+        -- Furthermore, we need to make sure that before you enter the box you go through a bracket
+        -- node -- inserting these is the job of bracketUsages
         (env2', usg2') = bracketUsages env2 (map (second enterBox) usg2)
+        
+        -- Finally, build the app node. Remember that e2 is boxed, so we need to enterBox on its input port
         (r, c, a) = app e1_port out_port (enterBox e2_port)
 exprSemantics' out_port env (Lam v e) = (r, filter ((/= v) . fst) usg)
   where (e_port, usg) = exprSemantics' b ((v, p) : env) e
@@ -128,6 +139,9 @@ combineUsages env usg1 usg2 = (catMaybes env1_mbs, catMaybes env2_mbs, usg)
     (usg, env1_mbs, env2_mbs) = unzip3 [combineUsage v (lookup v usg1) (lookup v usg2)
                                        | v <- nub $ map fst (usg1 ++ usg2)]
     
+    -- If both sides of the usage refer to the same variable, we need to insert a share node and
+    -- adjust the usage and environment appropriately to interdict all communication between the
+    -- use and definition sites
     combineUsage v mb_p1 mb_p2 = case (mb_p1, mb_p2) of
         (Nothing, Nothing) -> error "combineUsage"
         (Just p1, Nothing) -> ((v, p1), Just (v, p), Nothing)
@@ -139,6 +153,9 @@ combineUsages env usg1 usg2 = (catMaybes env1_mbs, catMaybes env2_mbs, usg)
 bracketUsages :: [(String, Port)] -> [(String, Port)] -> ([(String, Port)], [(String, Port)])
 bracketUsages env = unzip . map bracketUsage
   where
+    -- For every usage originating from the expression, add something to the environment that
+    -- brackets it before we go any further away from the box, adjusting the usage information
+    -- to now refer to the bracket
     bracketUsage (v, p) = ((v, m), (v, w))
       where (m, w) = bracket p (lookupInEnv env v)
 
