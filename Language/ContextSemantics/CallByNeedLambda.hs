@@ -159,6 +159,7 @@ bracketUsages env = unzip . map bracketUsage
     bracketUsage (v, p) = ((v, m), (v, w))
       where (m, w) = bracket p (lookupInEnv env v)
 
+lookupInEnv :: [(String, Port)] -> String -> Port
 lookupInEnv env v = error ("No binding for " ++ v) `fromMaybe` lookup v env
 
 --
