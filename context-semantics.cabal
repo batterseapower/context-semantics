@@ -13,8 +13,8 @@ Build-Type:         Simple
 Executable context-semantics
         Main-Is:                Language/ContextSemantics/Main.hs
         
-        Build-Depends:          base >= 3, template-haskell >= 2.3,
+        Build-Depends:          base >= 3, containers >= 0.2, template-haskell >= 2.3,
                                 utf8-string >= 0.3.4, ListZipper >= 1.1.1, nthable >= 0.1
         
-        Extensions:             PatternGuards, TemplateHaskell
+        Extensions:             PatternGuards, TemplateHaskell, TypeFamilies, KindSignatures, ScopedTypeVariables, FlexibleContexts
         Ghc-Options:            -Wall
