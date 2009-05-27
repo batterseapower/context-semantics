@@ -74,6 +74,7 @@ graphToDot = toDot node_attrs edge_attrs
 writeDot :: String -> Graph Router -> IO ()
 writeDot nm gr = writeFile (nm ++ ".dot") (graphToDot gr)
 
+
 --
 -- Context semantics
 --
@@ -101,6 +102,7 @@ fan princp_out white_out black_out = (princp_in, white_in, black_in)
 
 fv :: String -> Route -> Route
 fv s _fv_out = Output s
+
 
 --
 -- Translation from traditional linear lambda calculus
@@ -157,6 +159,7 @@ examples = do
     printUTF8 $ graphSemantics normalGraph [White, White]
 
 dots :: IO ()
+dots = do
     writeDot "x" xGraph
     writeDot "xy" xyGraph
     writeDot "identityApp" identityAppGraph

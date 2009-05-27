@@ -75,7 +75,8 @@ toDot node_attrs edge_attrs gr = "graph {\r\n" ++ intercalate ";\r\n" statements
                 , (from_selector, to_port) <- F.toList (selectors from_n)]
         unique_edges = nubBy (\(p1, p2) (q1, q2) -> (p1 == q1 && p2 == q2) || (p1 == q2 && p2 == q1)) edges
         
-        statements = node_statements ++ edge_statements
+        statements = root_statements ++ node_statements ++ edge_statements
+        root_statements = ["root [shape=point]", "root -- node" ++ show (port_node (gr_root_port gr)) ++ " [arrowhead=normal]"]
         node_statements = ["node" ++ show nid ++ format_list (("label", show nid) : node_attrs (fmap (const ()) n))
                           | (nid, n) <- nodes]
         edge_statements = ["node" ++ show (port_node from_port) ++ " -- node" ++ show (port_node to_port) ++ " " ++ format_list (edge_attrs (port_selector from_port) (port_selector to_port))
