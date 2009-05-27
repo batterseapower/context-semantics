@@ -86,43 +86,43 @@ fv s _fv_out = Output s
 -- Translation from traditional linear lambda calculus
 --
 
-fvNode :: String -> Wire -> GraphBuilderM Router ()
+fvNode :: String -> LooseEnd -> GraphBuilderM Router ()
 fvNode s wpr = newNode (FV s wpr)
 
-fanNode :: Wire -> Wire -> Wire -> GraphBuilderM Router ()
+fanNode :: LooseEnd -> LooseEnd -> LooseEnd -> GraphBuilderM Router ()
 fanNode wpr wwh wbl = newNode (Fan wpr wwh wbl)
 
 exprGraph :: Expr -> Graph Router
 exprGraph e = runGraphBuilderM $ do
     let buildFVNode v = do
-            pfv <- newWire
-            fvNode v pfv
-            return (v, pfv)
+            (pfv1, pfv2) <- newWire
+            fvNode v pfv1
+            return (v, pfv2)
     env <- mapM buildFVNode (freeVars e)
     
-    proot <- newWire
-    fvNode "root" proot
-    buildExprGraph env proot e
-    return proot
+    (proot1, proot2) <- newWire
+    fvNode "Input" proot1
+    buildExprGraph env proot2 e
+    return proot1
 
-buildExprGraph :: [(String, Wire)] -> Wire -> Expr -> GraphBuilderM Router ()
+buildExprGraph :: [(String, LooseEnd)] -> LooseEnd -> Expr -> GraphBuilderM Router ()
 buildExprGraph env ptop (V v)
   | Just pbind <- lookup v env = join ptop pbind
   | otherwise                  = error $ "No binding for " ++ v
 buildExprGraph env ptop (e1 :@ e2) = do
-    pfn <- newWire
-    buildExprGraph env pfn e1
+    (pfn1, pfn2) <- newWire
+    buildExprGraph env pfn1 e1
     
-    parg <- newWire
-    buildExprGraph env parg e2
+    (parg1, parg2) <- newWire
+    buildExprGraph env parg1 e2
     
-    fanNode pfn ptop parg
+    fanNode pfn2 ptop parg2
 buildExprGraph env ptop (Lam v e) = do
-    pbody <- newWire
-    pparam <- newWire
-    buildExprGraph ((v, pparam) : env) pbody e
+    (pbody1, pbody2) <- newWire
+    (pparam1, pparam2) <- newWire
+    buildExprGraph ((v, pparam1) : env) pbody1 e
     
-    fanNode ptop pbody pparam
+    fanNode ptop pbody2 pparam2
 
 
 --

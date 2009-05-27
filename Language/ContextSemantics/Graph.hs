@@ -4,6 +4,8 @@ module Language.ContextSemantics.Graph where
 
 import Language.ContextSemantics.Utilities
 
+import Control.Monad
+
 import qualified Data.IntMap as IM
 import Data.List
 import qualified Data.Traversable as T
@@ -60,21 +62,24 @@ foldPortwise f gr = lookup_port (gr_root_port gr)
 -- Graph builder monad, for convenience
 --
 
-newtype Wire = Wire Int
-             deriving (Show)
+newtype LooseEnd = LooseEnd { unLooseEnd :: Int }
+                 deriving (Show)
+
+data Knot n = KnotToLooseEnd LooseEnd
+            | KnotToPort (Port n)
 
 data GraphBuilderEnv n = GraphBuilderEnv {
     gbe_next_unique :: Int,
-    gbe_wire_eq_class :: IM.IntMap Int,
-    gbe_eq_class_ports :: IM.IntMap [Port n],
-    gbe_nodes :: IM.IntMap (n Wire)
+    gbe_loose_end_joins :: IM.IntMap LooseEnd,
+    gbe_loose_ends :: IM.IntMap (Maybe (Knot n)),
+    gbe_nodes :: IM.IntMap (n LooseEnd)
   }
 
 emptyGraphBuilderEnv :: GraphBuilderEnv n
 emptyGraphBuilderEnv = GraphBuilderEnv {
     gbe_next_unique = 0,
-    gbe_wire_eq_class = IM.empty,
-    gbe_eq_class_ports = IM.empty,
+    gbe_loose_end_joins = IM.empty,
+    gbe_loose_ends = IM.empty,
     gbe_nodes = IM.empty
   }
 
@@ -89,50 +94,44 @@ instance Monad (GraphBuilderM n) where
 newUnique :: GraphBuilderM n Int
 newUnique = GraphBuilderM $ \env -> let i = gbe_next_unique env in (env { gbe_next_unique = i + 1 }, i)
 
-insertNode :: Int -> n Wire -> GraphBuilderM n ()
+insertNode :: Int -> n LooseEnd -> GraphBuilderM n ()
 insertNode i node = GraphBuilderM $ \env -> (env { gbe_nodes = IM.insert i node (gbe_nodes env) }, ())
 
-recordWireConnection :: Port n -> Wire -> GraphBuilderM n ()
-recordWireConnection p (Wire wire) = GraphBuilderM $ \env ->
-    let equiv   = iMlookupCertainly wire (gbe_wire_eq_class env)
-        classes = iMlookupCertainly equiv (gbe_eq_class_ports env)
-        
-        env' = env { gbe_eq_class_ports = IM.insert equiv (p : classes) (gbe_eq_class_ports env) }
-    in (env', ())
+knotOnce :: a -> Maybe a -> Maybe a
+knotOnce what Nothing  = Just what
+knotOnce _    (Just _) = error "Can't knot a loose end twice!"
 
-newWire :: GraphBuilderM a Wire
+knotLooseEndToPort :: LooseEnd -> Port n -> GraphBuilderM n ()
+knotLooseEndToPort le p = GraphBuilderM $ \env -> (env { gbe_loose_ends = IM.adjust (knotOnce (KnotToPort p)) (unLooseEnd le) (gbe_loose_ends env) }, ())
+
+knotLooseEnds :: LooseEnd -> LooseEnd -> GraphBuilderM n ()
+knotLooseEnds le1 le2 = GraphBuilderM $ \env -> (env { gbe_loose_ends = IM.adjust (knotOnce (KnotToLooseEnd le1)) (unLooseEnd le2) (IM.adjust (knotOnce (KnotToLooseEnd le2)) (unLooseEnd le1) (gbe_loose_ends env)) }, ())
+
+newWire :: GraphBuilderM a (LooseEnd, LooseEnd)
 newWire = do
-    i <- newUnique
-    GraphBuilderM $ \env -> (env { gbe_wire_eq_class = IM.insert i i (gbe_wire_eq_class env)
-                                 , gbe_eq_class_ports = IM.insert i [] (gbe_eq_class_ports env) }, Wire i)
+    le1 <- liftM LooseEnd newUnique
+    le2 <- liftM LooseEnd newUnique
+    GraphBuilderM $ \env -> (env { gbe_loose_end_joins = IM.insert (unLooseEnd le2) le1 (IM.insert (unLooseEnd le1) le2 (gbe_loose_end_joins env))
+                                 , gbe_loose_ends = IM.insert (unLooseEnd le1) Nothing (IM.insert (unLooseEnd le2) Nothing (gbe_loose_ends env)) }, (le1, le2))
 
-newNode :: (Interactor n, T.Traversable n) => n Wire -> GraphBuilderM n ()
-newNode init_wires = do
+newNode :: (Interactor n, T.Traversable n) => n LooseEnd -> GraphBuilderM n ()
+newNode n_loose_ends = do
     nid <- newUnique
-    insertNode nid init_wires
-    fmapM_ (\(selector, init_wire) -> recordWireConnection (Port nid selector) init_wire) (selectors init_wires)
+    insertNode nid n_loose_ends
+    fmapM_ (\(selector, loose_end) -> knotLooseEndToPort loose_end (Port nid selector)) (selectors n_loose_ends)
 
-join :: Wire -> Wire -> GraphBuilderM n ()
-join (Wire wire1) (Wire wire2) = GraphBuilderM $ \env -> 
-    let (equiv1, equiv2)     = (iMlookupCertainly wire1 (gbe_wire_eq_class env),   iMlookupCertainly wire2 (gbe_wire_eq_class env))
-        (classes1, classes2) = (iMlookupCertainly equiv1 (gbe_eq_class_ports env), iMlookupCertainly equiv2 (gbe_eq_class_ports env))
-      
-        classes' = classes1 ++ classes2
-        env' = env { gbe_wire_eq_class = IM.insert wire2 equiv1 (gbe_wire_eq_class env)
-                   , gbe_eq_class_ports = IM.insert equiv1 classes' (IM.delete equiv2 (gbe_eq_class_ports env)) }
-    in (env', ())
+join :: LooseEnd -> LooseEnd -> GraphBuilderM n ()
+join = knotLooseEnds
 
-runGraphBuilderM :: (Interactor n, Functor n, Show (Selector n), Eq (Selector n)) => GraphBuilderM n Wire -> Graph n
+runGraphBuilderM :: (Interactor n, Functor n, Eq (Selector n)) => GraphBuilderM n LooseEnd -> Graph n
 runGraphBuilderM mx = Graph {
       gr_nodes = nodes,
-      gr_root_port = fromSingleton (lookupAllWirePorts root_wire)
+      gr_root_port = lookupLooseEndPort root_le
     }
-  where (final_env, root_wire) = unGraphBuilderM mx emptyGraphBuilderEnv
+  where (final_env, root_le) = unGraphBuilderM mx emptyGraphBuilderEnv
         
-        nodes = IM.mapWithKey (\nid -> fmap (\(sel, wire) -> lookupWirePort (Port nid sel) wire) . selectors) (gbe_nodes final_env)
-        lookupAllWirePorts (Wire wire) = iMlookupCertainly (iMlookupCertainly wire (gbe_wire_eq_class final_env)) (gbe_eq_class_ports final_env)
-        lookupWirePort this_port wire = case filter ((/=) this_port) all_ports of
-                                      [port] -> port
-                                      []     -> error $ "No suitable ports were set up for " ++ show this_port ++ ", wire " ++ show wire ++ " - this should be impossible (we had ports for nodes " ++ show all_ports ++ ")" -- show (map port_node all_ports) ++ ")"
-                                      _      -> error $ "Too many ports were set up for a wire - we got ports for nodes " ++ show (map port_node all_ports) ++ " while looking for the other end of node " ++ show (port_node this_port)
-          where all_ports = lookupAllWirePorts wire
+        nodes = IM.map (fmap lookupLooseEndPort) (gbe_nodes final_env)
+        lookupLooseEndPort le = case iMlookupCertainly (unLooseEnd $ iMlookupCertainly (unLooseEnd le) (gbe_loose_end_joins final_env)) (gbe_loose_ends final_env) of
+                                    Nothing                   -> error $ "An unknotted loose end remained!"
+                                    Just (KnotToLooseEnd le') -> lookupLooseEndPort le'
+                                    Just (KnotToPort p)       -> p
