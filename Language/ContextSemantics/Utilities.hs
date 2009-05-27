@@ -11,6 +11,9 @@ fromSingleton :: [a] -> a
 fromSingleton [x] = x
 fromSingleton xs  = error $ "fromSingleton: got " ++ show (length xs) ++ " items"
 
+lookupCertainly :: Eq a => a -> [(a, b)] -> b
+lookupCertainly = (fromJust .) . lookup
+
 iMlookupCertainly :: Int -> IM.IntMap a -> a
 iMlookupCertainly = (fromJust .) . IM.lookup
 

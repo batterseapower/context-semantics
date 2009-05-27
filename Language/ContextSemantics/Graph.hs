@@ -4,6 +4,7 @@ module Language.ContextSemantics.Graph where
 
 import Language.ContextSemantics.Utilities
 
+import Control.Arrow (second)
 import Control.Monad
 
 import qualified Data.IntMap as IM
@@ -45,16 +46,16 @@ instance Eq (Selector n) => Eq (Port n) where
 
 data Graph n = Graph {
     gr_nodes :: IM.IntMap (n (Port n)),
-    gr_root_port :: Port n
+    gr_named_ports :: [(String, Port n)]
   }
 
-foldNodewise :: Functor n => (n a -> a) -> Graph n -> a
-foldNodewise f gr = lookup_node (gr_root_port gr)
+foldNodewise :: Functor n => (n a -> a) -> Graph n -> [(String, a)]
+foldNodewise f gr = map (second lookup_node) (gr_named_ports gr)
   where lookup_node port = assertJust "foldNodewise" (IM.lookup (port_node port) node_vals)
         node_vals = IM.map (f . fmap lookup_node) (gr_nodes gr)
 
-foldPortwise :: Interactor n => (n a -> n a) -> Graph n -> a
-foldPortwise f gr = lookup_port (gr_root_port gr)
+foldPortwise :: Interactor n => (n a -> n a) -> Graph n -> [(String, a)]
+foldPortwise f gr = map (second lookup_port) (gr_named_ports gr)
   where lookup_port port = port_selector port `select` assertJust "foldPortwise" (IM.lookup (port_node port) node_port_vals)
         node_port_vals = IM.map (f . fmap lookup_port) (gr_nodes gr)
 
@@ -75,8 +76,11 @@ toDot node_attrs edge_attrs gr = "graph {\r\n" ++ intercalate ";\r\n" statements
                 , (from_selector, to_port) <- F.toList (selectors from_n)]
         unique_edges = nubBy (\(p1, p2) (q1, q2) -> (p1 == q1 && p2 == q2) || (p1 == q2 && p2 == q1)) edges
         
-        statements = root_statements ++ node_statements ++ edge_statements
-        root_statements = ["root [shape=point]", "root -- node" ++ show (port_node (gr_root_port gr)) ++ " [arrowhead=normal]"]
+        statements = named_node_statements ++ named_edge_statements ++ node_statements ++ edge_statements
+        named_node_statements = ["named" ++ name ++ " [shape=point,label=" ++ name ++ "]"
+                                | (name, _) <- gr_named_ports gr]
+        named_edge_statements = ["named" ++ name ++ " -- node" ++ show (port_node port) ++ " [arrowhead=normal]"
+                                | (name, port) <- gr_named_ports gr]
         node_statements = ["node" ++ show nid ++ format_list (("label", show nid) : node_attrs (fmap (const ()) n))
                           | (nid, n) <- nodes]
         edge_statements = ["node" ++ show (port_node from_port) ++ " -- node" ++ show (port_node to_port) ++ " " ++ format_list (edge_attrs (port_selector from_port) (port_selector to_port))
@@ -112,6 +116,9 @@ emptyGraphBuilderEnv = GraphBuilderEnv {
 newtype GraphBuilderM n a = GraphBuilderM {
     unGraphBuilderM :: GraphBuilderEnv n -> (GraphBuilderEnv n, a)
   }
+
+instance Functor (GraphBuilderM n) where
+    fmap f mx = mx >>= \x -> return (f x)
 
 instance Monad (GraphBuilderM n) where
     return x = GraphBuilderM $ \env -> (env, x)
@@ -149,12 +156,12 @@ newNode n_loose_ends = do
 join :: LooseEnd -> LooseEnd -> GraphBuilderM n ()
 join = knotLooseEnds
 
-runGraphBuilderM :: Interactor n => GraphBuilderM n LooseEnd -> Graph n
+runGraphBuilderM :: Interactor n => GraphBuilderM n [(String, LooseEnd)] -> Graph n
 runGraphBuilderM mx = Graph {
       gr_nodes = nodes,
-      gr_root_port = lookupLooseEndPort root_le
+      gr_named_ports = map (second lookupLooseEndPort) named_les
     }
-  where (final_env, root_le) = unGraphBuilderM mx emptyGraphBuilderEnv
+  where (final_env, named_les) = unGraphBuilderM mx emptyGraphBuilderEnv
         
         nodes = IM.map (fmap lookupLooseEndPort) (gbe_nodes final_env)
         lookupLooseEndPort le = case iMlookupCertainly (unLooseEnd $ iMlookupCertainly (unLooseEnd le) (gbe_loose_end_joins final_env)) (gbe_loose_ends final_env) of

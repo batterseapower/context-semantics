@@ -3,6 +3,7 @@ module Language.ContextSemantics.LinearLambdaExplicit where
 import Language.ContextSemantics.Expressions
 import Language.ContextSemantics.Graph
 import Language.ContextSemantics.Output
+import Language.ContextSemantics.Utilities
 
 import Control.Applicative ((<$>), (<*>))
 
@@ -46,7 +47,7 @@ instance Interactor Router where
     select FVPr  (FV _ pr)      = pr
 
 graphSemantics :: Graph Router -> Route
-graphSemantics = foldPortwise routerSemantics
+graphSemantics = lookupCertainly "Input" . foldPortwise routerSemantics
 
 routerSemantics :: Router Route -> Router Route
 routerSemantics (Fan pr wh bl) = Fan pr' wh' bl'
@@ -119,13 +120,13 @@ exprGraph e = runGraphBuilderM $ do
     let buildFVNode v = do
             (pfv1, pfv2) <- newWire
             fvNode v pfv1
-            return (v, pfv2)
-    env <- mapM buildFVNode (freeVars e)
-    
+            return ((v, pfv1), (v, pfv2))
+    (env1, env2) <- fmap unzip $ mapM buildFVNode (freeVars e)
+
     (proot1, proot2) <- newWire
     fvNode "Input" proot1
-    buildExprGraph env proot2 e
-    return proot1
+    buildExprGraph env2 proot2 e
+    return $ ("Input", proot1) : env1
 
 buildExprGraph :: [(String, LooseEnd)] -> LooseEnd -> Expr -> GraphBuilderM Router ()
 buildExprGraph env ptop (V v)
@@ -148,6 +149,14 @@ buildExprGraph env ptop (Lam v e) = do
 
 
 --
+-- Readback
+--
+
+semanticsExpr :: [(String, Route)] -> Expr
+semanticsExpr = undefined
+
+
+--
 -- Examples
 --
 
@@ -165,14 +174,12 @@ dots = do
     writeDot "identityApp" identityAppGraph
     writeDot "normal" normalGraph
 
-xGraph :: Graph Router
+xGraph, xyGraph, identityAppGraph, normalGraph :: Graph Router
+
 xGraph = exprGraph $ V "x"
 
-xyGraph :: Graph Router
 xyGraph = exprGraph $ V "x" :@ V "y"
 
-identityAppGraph :: Graph Router
 identityAppGraph = exprGraph $ (Lam "x" (V "x")) :@ (V "y")
 
-normalGraph :: Graph Router
 normalGraph = exprGraph $ Lam "x" (Lam "y" (V "y" :@ V "z" :@ V "x"))
