@@ -16,5 +16,5 @@ Executable context-semantics
         Build-Depends:          base >= 3, containers >= 0.2, template-haskell >= 2.3,
                                 utf8-string >= 0.3.4, ListZipper >= 1.1.1, nthable >= 0.1
         
-        Extensions:             PatternGuards, TemplateHaskell, TypeFamilies, KindSignatures, ScopedTypeVariables, FlexibleContexts
+        Extensions:             PatternGuards, TemplateHaskell, TypeFamilies, KindSignatures, ScopedTypeVariables, FlexibleContexts, FlexibleInstances
         Ghc-Options:            -Wall

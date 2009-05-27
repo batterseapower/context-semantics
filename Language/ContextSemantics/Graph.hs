@@ -2,6 +2,7 @@
 
 module Language.ContextSemantics.Graph where
 
+import Language.ContextSemantics.Common
 import Language.ContextSemantics.Utilities
 
 import Control.Arrow (second)
@@ -46,15 +47,15 @@ instance Eq (Selector n) => Eq (Port n) where
 
 data Graph n = Graph {
     gr_nodes :: IM.IntMap (n (Port n)),
-    gr_named_ports :: [(String, Port n)]
+    gr_named_ports :: [(PortName, Port n)]
   }
 
-foldNodewise :: Functor n => (n a -> a) -> Graph n -> [(String, a)]
+foldNodewise :: Functor n => (n a -> a) -> Graph n -> [(PortName, a)]
 foldNodewise f gr = map (second lookup_node) (gr_named_ports gr)
   where lookup_node port = assertJust "foldNodewise" (IM.lookup (port_node port) node_vals)
         node_vals = IM.map (f . fmap lookup_node) (gr_nodes gr)
 
-foldPortwise :: Interactor n => (n a -> n a) -> Graph n -> [(String, a)]
+foldPortwise :: Interactor n => (n a -> n a) -> Graph n -> [(PortName, a)]
 foldPortwise f gr = map (second lookup_port) (gr_named_ports gr)
   where lookup_port port = port_selector port `select` assertJust "foldPortwise" (IM.lookup (port_node port) node_port_vals)
         node_port_vals = IM.map (f . fmap lookup_port) (gr_nodes gr)
@@ -156,7 +157,7 @@ newNode n_loose_ends = do
 join :: LooseEnd -> LooseEnd -> GraphBuilderM n ()
 join = knotLooseEnds
 
-runGraphBuilderM :: Interactor n => GraphBuilderM n [(String, LooseEnd)] -> Graph n
+runGraphBuilderM :: Interactor n => GraphBuilderM n [(PortName, LooseEnd)] -> Graph n
 runGraphBuilderM mx = Graph {
       gr_nodes = nodes,
       gr_named_ports = map (second lookupLooseEndPort) named_les

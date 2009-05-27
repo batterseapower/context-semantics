@@ -1,9 +1,11 @@
 module Language.ContextSemantics.Output where
 
+import Language.ContextSemantics.Common
+
 import qualified System.IO.UTF8
 
 
-data Output a = Output String a
+data Output a = Output PortName a
 
 instance Show a => Show (Output a) where
     show (Output port what) = port ++ ": " ++ show what

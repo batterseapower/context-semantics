@@ -1,5 +1,6 @@
 module Language.ContextSemantics.LinearLambdaExplicit where
 
+import Language.ContextSemantics.Common
 import Language.ContextSemantics.Expressions
 import Language.ContextSemantics.Graph
 import Language.ContextSemantics.Output
@@ -46,8 +47,11 @@ instance Interactor Router where
     select FanBl (Fan _  _  bl) = bl
     select FVPr  (FV _ pr)      = pr
 
-graphSemantics :: Graph Router -> Route
-graphSemantics = lookupCertainly "Input" . foldPortwise routerSemantics
+inputGraphSemantics :: Graph Router -> Route
+inputGraphSemantics = lookupCertainly "Input" . graphSemantics
+
+graphSemantics :: Graph Router -> [(PortName, Route)]
+graphSemantics = foldPortwise routerSemantics
 
 routerSemantics :: Router Route -> Router Route
 routerSemantics (Fan pr wh bl) = Fan pr' wh' bl'
@@ -88,21 +92,21 @@ instance Show Token where
     
     showList = showCompactList
 
-type Route = [Token] -> Output [Token]
+type Route = [Token] -> Either String (Output [Token])
 
 fan :: Route -> Route -> Route -> (Route, Route, Route)
 fan princp_out white_out black_out = (princp_in, white_in, black_in)
   where
     princp_in (White:ts) = white_out ts
     princp_in (Black:ts) = black_out ts
-    princp_in []         = error "fan: empty incoming context at principal port"
+    princp_in []         = Left "fan: empty incoming context at principal port"
     
     white_in ts = princp_out (White:ts)
     
     black_in ts = princp_out (Black:ts)
 
 fv :: String -> Route -> Route
-fv s _fv_out = Output s
+fv s _fv_out = Right . Output s
 
 
 --
@@ -128,7 +132,7 @@ exprGraph e = runGraphBuilderM $ do
     buildExprGraph env2 proot2 e
     return $ ("Input", proot1) : env1
 
-buildExprGraph :: [(String, LooseEnd)] -> LooseEnd -> Expr -> GraphBuilderM Router ()
+buildExprGraph :: [(PortName, LooseEnd)] -> LooseEnd -> Expr -> GraphBuilderM Router ()
 buildExprGraph env ptop (V v)
   | Just pbind <- lookup v env = join ptop pbind
   | otherwise                  = error $ "No binding for " ++ v
@@ -152,8 +156,8 @@ buildExprGraph env ptop (Lam v e) = do
 -- Readback
 --
 
-semanticsExpr :: [(String, Route)] -> Expr
-semanticsExpr = undefined
+semanticsExpr :: [(PortName, Route)] -> Expr
+semanticsExpr named_routes = undefined
 
 
 --
@@ -162,10 +166,10 @@ semanticsExpr = undefined
 
 examples :: IO ()
 examples = do
-    printUTF8 $ graphSemantics xGraph [Black]
-    printUTF8 $ graphSemantics xyGraph [White]
-    printUTF8 $ graphSemantics identityAppGraph [Black]
-    printUTF8 $ graphSemantics normalGraph [White, White]
+    printUTF8 $ inputGraphSemantics xGraph [Black]
+    printUTF8 $ inputGraphSemantics xyGraph [White]
+    printUTF8 $ inputGraphSemantics identityAppGraph [Black]
+    printUTF8 $ inputGraphSemantics normalGraph [White, White]
 
 dots :: IO ()
 dots = do

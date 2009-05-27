@@ -7,6 +7,15 @@ import qualified Data.Traversable as T
 import Debug.Trace
 
 
+instance Monad (Either String) where
+    return = Right
+    
+    Left s  >>= _ = Left s
+    Right x >>= f = f x
+    
+    fail = Left
+
+
 fromSingleton :: [a] -> a
 fromSingleton [x] = x
 fromSingleton xs  = error $ "fromSingleton: got " ++ show (length xs) ++ " items"

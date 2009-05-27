@@ -17,14 +17,14 @@ instance Show Token where
     
     showList = showCompactList
 
-type Port = [Token] -> Output [Token]
+type Port = [Token] -> Either String (Output [Token])
 
 app :: Port -> Port -> Port -> (Port, Port, Port)
 app princp_out cont_out arg_out = (princp_in, cont_in, arg_in)
   where
     princp_in (White:ts) = cont_out ts
     princp_in (Black:ts) = arg_out ts
-    princp_in []         = error "app: empty incoming context at principal port"
+    princp_in []         = Left "app: empty incoming context at principal port"
     
     cont_in ts = princp_out (White:ts)
     
@@ -35,14 +35,14 @@ lam princp_out body_out param_out = (princp_in, body_in, param_in)
   where
     princp_in (White:ts) = body_out ts
     princp_in (Black:ts) = param_out ts
-    princp_in []         = error "lam: empty incoming context at principal port"
+    princp_in []         = Left "lam: empty incoming context at principal port"
     
     body_in ts = princp_out (White:ts)
     
     param_in ts = princp_out (Black:ts)
 
 fv :: String -> Port
-fv = Output
+fv = (Right .) . Output
 
 --
 -- Translation from traditional linear lambda calculus

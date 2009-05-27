@@ -1,6 +1,7 @@
 module Language.ContextSemantics.CallByNeedLambda where
 
 import Language.ContextSemantics.Expressions
+import Language.ContextSemantics.Utilities ()
 import Language.ContextSemantics.Output
 
 import Control.Arrow (second)
@@ -28,12 +29,12 @@ instance Show Token where
     
     showList = showCompactList
 
-type Port = Zipper [Token] -> Output (Zipper [Token])
+type Port = Zipper [Token] -> Either String (Output (Zipper [Token]))
 
-popAtCursor :: Zipper [Token] -> (Token, Zipper [Token])
+popAtCursor :: Zipper [Token] -> Either String (Token, Zipper [Token])
 popAtCursor tss = case cursor tss of
-    (t:ts) -> (t, replace ts tss)
-    []     -> error $ "popAtCursor: malformed incoming context " ++ show tss
+    (t:ts) -> return (t, replace ts tss)
+    []     -> Left $ "popAtCursor: malformed incoming context " ++ show tss
 
 pushAtCursor :: Token -> Zipper [Token] -> Zipper [Token]
 pushAtCursor t tss = replace (t : cursor tss) tss
@@ -41,10 +42,10 @@ pushAtCursor t tss = replace (t : cursor tss) tss
 app :: Port -> Port -> Port -> (Port, Port, Port)
 app princp_out cont_out arg_out = (princp_in, cont_in, arg_in)
   where
-    princp_in tss = case popAtCursor tss of
-        (White, tss') -> cont_out tss'
-        (Black, tss') -> arg_out tss'
-        _             -> error $ "app: principal port got malformed incoming context " ++ show tss
+    princp_in tss = popAtCursor tss >>= \tss' -> case tss' of
+        (White, tss'') -> cont_out tss''
+        (Black, tss'') -> arg_out tss''
+        _              -> Left $ "app: principal port got malformed incoming context " ++ show tss
     
     cont_in tss = princp_out (pushAtCursor White tss)
     
@@ -53,10 +54,10 @@ app princp_out cont_out arg_out = (princp_in, cont_in, arg_in)
 lam :: Port -> Port -> Port -> (Port, Port, Port)
 lam princp_out body_out param_out = (princp_in, body_in, param_in)
   where
-    princp_in tss = case popAtCursor tss of
-        (White, tss') -> body_out tss'
-        (Black, tss') -> param_out tss'
-        _             -> error $ "lam: principal port got malformed incoming context " ++ show tss
+    princp_in tss = popAtCursor tss >>= \tss' -> case tss' of
+        (White, tss'') -> body_out tss''
+        (Black, tss'') -> param_out tss''
+        _              -> Left $ "lam: principal port got malformed incoming context " ++ show tss
     
     body_in tss = princp_out (pushAtCursor White tss)
     
@@ -65,10 +66,10 @@ lam princp_out body_out param_out = (princp_in, body_in, param_in)
 share :: Port -> Port -> Port -> (Port, Port, Port)
 share princp_out left_out right_out = (princp_in, left_in, right_in)
   where
-    princp_in tss = case popAtCursor tss of
-        (LeftT, tss')  -> left_out tss'
-        (RightT, tss') -> right_out tss'
-        _              -> error $ "share: principal port got malformed incoming context " ++ show tss
+    princp_in tss = popAtCursor tss >>= \tss' -> case tss' of
+        (LeftT, tss'')  -> left_out tss''
+        (RightT, tss'') -> right_out tss''
+        _               -> Left $ "share: principal port got malformed incoming context " ++ show tss
     
     left_in tss = princp_out (pushAtCursor LeftT tss)
     
@@ -87,7 +88,7 @@ croissant s forced_out boxed_out = (forced_in, boxed_in)
     
     boxed_in tss = case cursor tss of
         [Symbol s'] | s == s' -> forced_out (delete tss)
-        _                     -> error $ "croissant: boxed port got malformed incoming context " ++ show tss
+        _                     -> Left $ "croissant: boxed port got malformed incoming context " ++ show tss
 
 bracket :: Port -> Port -> (Port, Port)
 bracket merged_out waiting_out = (merged_in, waiting_in)
@@ -96,10 +97,10 @@ bracket merged_out waiting_out = (merged_in, waiting_in)
     
     waiting_in tss = case cursor tss of
         [Bracket shallow deep] -> merged_out $ insert shallow $ insert deep $ delete tss
-        _                      -> error $ "bracket: waiting port got malformed incoming context " ++ show tss
+        _                      -> Left $ "bracket: waiting port got malformed incoming context " ++ show tss
 
 fv :: String -> Port
-fv = Output
+fv = (Right .) . Output
 
 --
 -- Translation from traditional CBN lambda calculus
