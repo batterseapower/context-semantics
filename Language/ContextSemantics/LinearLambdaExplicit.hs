@@ -53,6 +53,26 @@ routerSemantics (Fan pr wh bl) = Fan pr' wh' bl'
   where (pr', wh', bl') = fan pr wh bl
 routerSemantics (FV s pr) = FV s (fv s pr)
 
+graphToDot :: Graph Router -> String
+graphToDot = toDot node_attrs edge_attrs
+  where node_attrs (Fan _ _ _) = [("shape", "triangle")]
+        node_attrs (FV s _)    = [("shape", "dot"), ("label", s)]
+        
+        edge_attrs from to = [("arrowtail", selector_shape from), ("arrowhead", selector_shape to),
+                              ("tailport", selector_port from),   ("headport", selector_port to)]
+        
+        selector_shape FanPr = "none"
+        selector_shape FanWh = "odot"
+        selector_shape FanBl = "dot"
+        selector_shape FVPr = "none"
+        
+        selector_port FanPr = "n"
+        selector_port FanWh = "sw"
+        selector_port FanBl = "se"
+        selector_port FVPr = "n"
+
+writeDot :: String -> Graph Router -> IO ()
+writeDot nm gr = writeFile (nm ++ ".dot") (graphToDot gr)
 
 --
 -- Context semantics
@@ -131,16 +151,25 @@ buildExprGraph env ptop (Lam v e) = do
 
 examples :: IO ()
 examples = do
-    printUTF8 $ exprSemantics (V "x") [Black]
-    printUTF8 $ exprSemantics (V "x" :@ V "y") [White]
-    printUTF8 $ identityApp [Black]
-    printUTF8 $ normal [White, White]
+    printUTF8 $ graphSemantics xGraph [Black]
+    printUTF8 $ graphSemantics xyGraph [White]
+    printUTF8 $ graphSemantics identityAppGraph [Black]
+    printUTF8 $ graphSemantics normalGraph [White, White]
 
-exprSemantics :: Expr -> Route
-exprSemantics = graphSemantics . exprGraph
+dots :: IO ()
+    writeDot "x" xGraph
+    writeDot "xy" xyGraph
+    writeDot "identityApp" identityAppGraph
+    writeDot "normal" normalGraph
 
-identityApp :: Route
-identityApp = exprSemantics $ (Lam "x" (V "x")) :@ (V "y")
+xGraph :: Graph Router
+xGraph = exprGraph $ V "x"
 
-normal :: Route
-normal = exprSemantics $ Lam "x" (Lam "y" (V "y" :@ V "z" :@ V "x"))
+xyGraph :: Graph Router
+xyGraph = exprGraph $ V "x" :@ V "y"
+
+identityAppGraph :: Graph Router
+identityAppGraph = exprGraph $ (Lam "x" (V "x")) :@ (V "y")
+
+normalGraph :: Graph Router
+normalGraph = exprGraph $ Lam "x" (Lam "y" (V "y" :@ V "z" :@ V "x"))

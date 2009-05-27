@@ -7,6 +7,7 @@ import Language.ContextSemantics.Utilities
 import Control.Monad
 
 import qualified Data.IntMap as IM
+import qualified Data.Foldable as F
 import Data.List
 import qualified Data.Traversable as T
 
@@ -15,7 +16,7 @@ import qualified Data.Traversable as T
 -- Interactors: functors that we can build interaction graphs from
 --
 
-class Functor n => Interactor n where
+class (T.Traversable n, Eq (Selector n)) => Interactor n where
   type Selector n :: *
   
   selectors :: n a -> n (Selector n, a)
@@ -59,7 +60,31 @@ foldPortwise f gr = lookup_port (gr_root_port gr)
 
 
 --
--- Graph builder monad, for convenience
+-- Converting to .dot files
+--
+
+toDot :: Interactor n
+      => (n () -> [(String, String)])                     -- ^ Assignment of attributes to node
+      -> (Selector n -> Selector n -> [(String, String)]) -- ^ Assignment of attributes to edges
+      -> Graph n
+      -> String
+toDot node_attrs edge_attrs gr = "graph {\r\n" ++ intercalate ";\r\n" statements ++ "\r\n}\r\n"
+  where nodes = IM.assocs (gr_nodes gr)
+        edges = [(Port from_nid from_selector, to_port)
+                | (from_nid, from_n) <- nodes
+                , (from_selector, to_port) <- F.toList (selectors from_n)]
+        unique_edges = nubBy (\(p1, p2) (q1, q2) -> (p1 == q1 && p2 == q2) || (p1 == q2 && p2 == q1)) edges
+        
+        statements = node_statements ++ edge_statements
+        node_statements = ["node" ++ show nid ++ format_list (("label", show nid) : node_attrs (fmap (const ()) n))
+                          | (nid, n) <- nodes]
+        edge_statements = ["node" ++ show (port_node from_port) ++ " -- node" ++ show (port_node to_port) ++ " " ++ format_list (edge_attrs (port_selector from_port) (port_selector to_port))
+                          | (from_port, to_port) <- unique_edges]
+        format_list avps = "[" ++ intercalate "," [attr ++ "=" ++ val | (attr, val) <- avps] ++ "]"
+
+
+--
+-- Graph builder monad, for convenience of construction
 --
 
 newtype LooseEnd = LooseEnd { unLooseEnd :: Int }
@@ -114,7 +139,7 @@ newWire = do
     GraphBuilderM $ \env -> (env { gbe_loose_end_joins = IM.insert (unLooseEnd le2) le1 (IM.insert (unLooseEnd le1) le2 (gbe_loose_end_joins env))
                                  , gbe_loose_ends = IM.insert (unLooseEnd le1) Nothing (IM.insert (unLooseEnd le2) Nothing (gbe_loose_ends env)) }, (le1, le2))
 
-newNode :: (Interactor n, T.Traversable n) => n LooseEnd -> GraphBuilderM n ()
+newNode :: Interactor n => n LooseEnd -> GraphBuilderM n ()
 newNode n_loose_ends = do
     nid <- newUnique
     insertNode nid n_loose_ends
@@ -123,7 +148,7 @@ newNode n_loose_ends = do
 join :: LooseEnd -> LooseEnd -> GraphBuilderM n ()
 join = knotLooseEnds
 
-runGraphBuilderM :: (Interactor n, Functor n, Eq (Selector n)) => GraphBuilderM n LooseEnd -> Graph n
+runGraphBuilderM :: Interactor n => GraphBuilderM n LooseEnd -> Graph n
 runGraphBuilderM mx = Graph {
       gr_nodes = nodes,
       gr_root_port = lookupLooseEndPort root_le
